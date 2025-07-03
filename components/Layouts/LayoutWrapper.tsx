@@ -512,6 +512,12 @@ function LayoutWrapper({ children }: { children: JSX.Element }) {
           name: "Students",
           id: "/student",
         },
+
+        {
+          avatar: <ArticleIcon />,
+          name: "MagicSheet",
+          id: "/magicsheet",
+        },
         role === 100 || role === 101 || role === 102
           ? {
               avatar: <CalendarMonthIcon />,
