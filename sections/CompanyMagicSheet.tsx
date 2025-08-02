@@ -1,223 +1,296 @@
 import AddIcon from "@mui/icons-material/Add";
 import EditIcon from "@mui/icons-material/Edit";
-import Meta from "@components/Meta";
 import DeleteIcon from "@mui/icons-material/Delete";
-import { Box, Button, IconButton, Modal, Stack, Tooltip } from "@mui/material";
+import Meta from "@components/Meta";
+import {
+  Box,
+  Button,
+  IconButton,
+  Modal,
+  Stack,
+  Tooltip,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+} from "@mui/material";
 import { GridColDef } from "@mui/x-data-grid";
 import { useRouter } from "next/router";
 import React, { useEffect, useState } from "react";
-
+import MagicSheetRequest, { MagicSheet } from "@callbacks/admin/magicsheet/magicsheetAdmin";
+import { CompanyRc } from "@callbacks/admin/rc/company";
 import AssignCoco from "@components/Modals/AssignCoco";
 import DataGrid from "@components/DataGrid";
-import ActiveButton from "@components/Buttons/ActiveButton";
+
 import useStore from "@store/store";
-import DeleteConfirmation from "@components/Modals/DeleteConfirmation";
+import { getDeptProgram } from "@components/Parser/parser";
+import AddStudent from "@components/Modals/AddStudent";
+import requestProforma, { ProformaType } from "@callbacks/admin/rc/proforma";
+
+function CompanyMagicSheet({ company }: { company: CompanyRc }) {
+  const { token } = useStore();
+  const router = useRouter();
+  const rcidRaw = router.query.rcid;
+  const rcidNumber = typeof rcidRaw === "string" ? parseInt(rcidRaw, 10) : NaN;
+
+  const [masterRows, setMasterRows] = useState<MagicSheet[]>([]);
+  const [roleRows, setRoleRows] = useState<Record<number, MagicSheet[]>>({});
+  const [loading, setLoading] = useState(false);
+type Proforma = { ID: number; Role: string ; };
+const [proformas, setProformas] = useState<ProformaType[]>([]);
+
+  const [openAssignCoco, setOpenAssignCoco] = useState(false);
+  const [selectedPids, setSelectedPids] = useState<number[]>([]);
+
+  const [openAddStudent, setOpenAddStudent] = useState(false);
+  const [activeProformaId, setActiveProformaId] = useState<number | null>(null);
+
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: number; proforma_id: number } | null>(null);
 
 
-const columns: GridColDef[] = [
+  const fetchMagicSheets = async (proformaIds: number[]) => {
+    const data = await MagicSheetRequest.getAllCompany(
+      token,
+      company.recruitment_cycle_id,
+      proformaIds
+    );
+    const grouped: Record<number, MagicSheet[]> = {};
+    if(data != null ){
+    data.forEach((sheet) => {
+      grouped[sheet.proforma_id] = grouped[sheet.proforma_id] || [];
+      grouped[sheet.proforma_id].push(sheet);
+    });
+    setMasterRows(data);
+    setRoleRows(grouped);}
+  };
+
+const [proformaIdToRole, setProformaIdToRole] = useState<Record<number, string>>({});
+
+const fetchProformas = async () => {
+  if (!company?.recruitment_cycle_id || !company?.company_id) return;
+  const list = await requestProforma.getall(
+    token,
+    String(company.recruitment_cycle_id),
+    String(company.company_id)
+  );
+  setProformas(list);
+
+  const roleMap: Record<number, string> = {};
+  list.forEach((p) => {
+    roleMap[p.ID] = p.role; // or p.Role depending on actual casing
+  });
+  setProformaIdToRole(roleMap);
+
+  const ids = list.map((p) => p.ID);
+  await fetchMagicSheets(ids);
+};
+
+
+  useEffect(() => {
+    fetchProformas();
+  }, [company]);
+
+
+  const handleOpenAddStudent = (pid: number) => {
+    setActiveProformaId(pid);
+    setOpenAddStudent(true);
+  };
+  const handleSubmitStudent = async (rollNos: string[]) => {
+    if (!activeProformaId || isNaN(rcidNumber)) return;
+    await MagicSheetRequest.create(token, rollNos, rcidNumber, activeProformaId);
+await fetchMagicSheets(proformas.map((p) => p.ID));
+
+    setOpenAddStudent(false);
+  };
+
+
+  const handleDeleteClick = (id: number, pid: number) => {
+    setDeleteTarget({ id, proforma_id: pid });
+    setDeleteDialogOpen(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deleteTarget || isNaN(rcidNumber)) return;
+    await MagicSheetRequest.delete(token, deleteTarget.id, rcidNumber);
+  
+    setMasterRows((prev) => prev.filter((r) => r.ID !== deleteTarget.id));
+  
+    setRoleRows((prev) => {
+      const copy = { ...prev };
+      copy[deleteTarget.proforma_id] = (copy[deleteTarget.proforma_id] || []).filter(
+        (r) => r.ID !== deleteTarget.id
+      );
+      return copy;
+    });
+    setDeleteDialogOpen(false);
+    setDeleteTarget(null);
+  };
+  const handleCancelDelete = () => {
+    setDeleteDialogOpen(false);
+    setDeleteTarget(null);
+  };
+
+ 
+  const columns: GridColDef[] = [
     { field: "roll_no", headerName: "Roll No.", width: 130 },
     { field: "name", headerName: "Name", width: 180 },
-       {field: "assigned_coco" ,headerName : "Coco",width: 180 },
-       //this is for role specific coloum
-    { field: "proforma_id", headerName: "Proforma_ID", width: 130 },
-    { field: "mobile", headerName: "Mobile", width: 150 },
-    { field: "alt_contact", headerName: "Alternate Contact", width: 180 },
-    { field: "friend_name", headerName: "Friend's Name", width: 180 },
-    { field: "friend_contact", headerName: "Friend's Contact", width: 180 },
-    { field: "iitk_email", headerName: "IITK Email ID", width: 200 },
-    { field: "primary_program", headerName: "Primary Program", width: 160 },
-    { field: "secondary_program", headerName: "Secondary Program", width: 180 },
-    { field: "cpi", headerName: "CPI", width: 100 },
+    { field: "coco_id", headerName: "Coco", width: 180 },
+   {
+  field: "proforma_id",
+  headerName: "Role",
+  width: 180,
+  valueGetter: (params) => proformaIdToRole[params.row.proforma_id] || `#${params.row.proforma_id}`,
+},
+    { field: "phone", headerName: "Mobile", width: 150, hide: true },
+    { field: "alternate_phone", headerName: "Alternate Contact", width: 180, hide: true },
+    { field: "friend_name", headerName: "Friend's Name", width: 180, hide: true },
+    { field: "friend_phone", headerName: "Friend's Contact", width: 180, hide: true },
+    { field: "iitk_email", headerName: "IITK Email ID", width: 200, hide: true },
+    {
+      field: "program_department_id",
+      headerName: "Primary Program",
+      width: 160,
+      valueGetter: (params) => getDeptProgram(params.value),
+    },
+    {
+      field: "secondary_program_department_id",
+      headerName: "Secondary Program",
+      width: 180,
+      hide: true,
+      valueGetter: (params) => getDeptProgram(params.value),
+    },
+    { field: "current_cpi", headerName: "CPI", width: 100 },
     { field: "status", headerName: "Status", width: 100 },
-    { field: "r1_in", headerName: "R1 In Time", width: 150 },
-    { field: "r1_out", headerName: "R1 Out Time", width: 150 },
-    { field: "r2_in", headerName: "R2 In Time", width: 150 },
-    { field: "r2_out", headerName: "R2 Out Time", width: 150 },
-    { field: "r3_in", headerName: "R3 In Time", width: 150 },
-    { field: "r3_out", headerName: "R3 Out Time", width: 150 },
+    { field: "r1_in_time", headerName: "R1 In Time", width: 150 },
+    { field: "r1_out_time", headerName: "R1 Out Time", width: 150 },
     { field: "comments", headerName: "Comments", width: 250 },
     {
-        field: "actions",
-        headerName: "Actions",
-        width: 120,
-        renderCell: () => (
-            <Stack direction="row" spacing={1}>
-                <Tooltip title="Edit">
-                    <IconButton
-                        size="small"
-                        href={`/admin/rc/[rcid]/magicsheet/student/${1}`}
-                    >
-                        <EditIcon fontSize="small" />
-                    </IconButton>
-                </Tooltip>
-                <Tooltip title="Delete">
-                    <IconButton
-                        size="small"
-                        onClick={() => {
-
-                        }}
-                    >
-                        <DeleteIcon fontSize="small" />
-                    </IconButton>
-                </Tooltip>
-            </Stack>
-        ),
-    },
-];
-const dummyData = [
-    {
-        id: 1,
-        roll_no: "210123",
-        name: "Muragesh",
-        assigned_coco : "rahul",
-      
-        mobile: "9876543210",
-        alt_contact: "9123456789",
-        friend_name: "Ravi",
-        friend_contact: "9988776655",
-        iitk_email: "muragesh@iitk.ac.in",
-        primary_program: "B.Tech CSE",
-        secondary_program: "Minor in AI",
-        cpi: "8.9",
-        status: "Active",
-        r1_in: "9:00 AM",
-        r1_out: "10:00 AM",
-        r2_in: "11:00 AM",
-        r2_out: "12:00 PM",
-        r3_in: "2:00 PM",
-        r3_out: "3:00 PM",
-        comments: "No remarks",
-    },
-    {
-        id: 2,
-        roll_no: "210456",
-        assigned_coco : "Modi",
-        name: "Rohan",
-        mobile: "9876500000",
-        alt_contact: "9111111111",
-        friend_name: "Amit",
-        friend_contact: "9000000000",
-        iitk_email: "rohan@iitk.ac.in",
-        primary_program: "B.Tech EE",
-        secondary_program: "Minor in ML",
-        cpi: "9.2",
-        status: "Active",
-        r1_in: "9:15 AM",
-        r1_out: "10:10 AM",
-        r2_in: "11:05 AM",
-        r2_out: "12:10 PM",
-        r3_in: "2:15 PM",
-        r3_out: "3:05 PM",
-        comments: "Good performance",
-    },
-];
-
-
-const dummyData_role = [
-    {
-        id: 1,
-        roll_no: "210123",
-        name: "Muragesh",
-   assigned_coco : "Modi",
-
-      
-        mobile: "9876543210",
-        alt_contact: "9123456789",
-        friend_name: "Ravi",
-        friend_contact: "9988776655",
-        iitk_email: "muragesh@iitk.ac.in",
-        primary_program: "B.Tech CSE",
-        secondary_program: "Minor in AI",
-        cpi: "8.9",
-        status: "Active",
-        r1_in: "9:00 AM",
-        r1_out: "10:00 AM",
-        r2_in: "11:00 AM",
-        r2_out: "12:00 PM",
-        r3_in: "2:00 PM",
-        r3_out: "3:00 PM",
-        comments: "No remarks",
-    },
-    {
-        id: 2,
-        roll_no: "210456",
-        name: "Rohan",
-       assigned_coco : "Modi",
-        mobile: "9876500000",
-        alt_contact: "9111111111",
-        friend_name: "Amit",
-        friend_contact: "9000000000",
-        iitk_email: "rohan@iitk.ac.in",
-        primary_program: "B.Tech EE",
-        secondary_program: "Minor in ML",
-        cpi: "9.2",
-        status: "Active",
-        r1_in: "9:15 AM",
-        r1_out: "10:10 AM",
-        r2_in: "11:05 AM",
-        r2_out: "12:10 PM",
-        r3_in: "2:15 PM",
-        r3_out: "3:05 PM",
-        comments: "Good performance",
-    },
-];
-
-function CompanyMagicSheet() {
-
-
-    const [Rolerows] =useState(dummyData_role)
-    const [loading] = useState(false);
-    const [openAssignCoco, setOpenAssignCoco] = useState(false);
-    const handleOpenAssignCoco = () => {
-        setOpenAssignCoco(true);
-    };
-    const handleCloseAssignCoco = () => {
-        setOpenAssignCoco(false);
-    };
-    return (
-
-        <div>
-            <Stack>
-            <Stack
-                spacing={2}
-                direction="row"
-                justifyContent="space-between"
-                alignItems="center"
+      field: "actions",
+      headerName: "Actions",
+      width: 120,
+      renderCell: (params) => (
+        <Stack direction="row" spacing={1}>
+          <Tooltip title="Edit">
+            <IconButton
+              size="small"
+              onClick={() =>
+                router.push({
+                  pathname: `/admin/rc/${rcidRaw}/magicsheet/student/${params.row.id}`,
+                  query: { data: JSON.stringify(params.row) },
+                })
+              }
             >
-                <h2>Company MagicSheet</h2>
-                <Tooltip title="Assign COCO">
-                    <IconButton onClick={handleOpenAssignCoco}>
-                        <AddIcon />
-                    </IconButton>
-                </Tooltip>
-            </Stack>
-               <DataGrid rows={Rolerows} columns={columns} loading={loading} />
-               </Stack>
+              <EditIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Delete">
+            <IconButton size="small" onClick={() => handleDeleteClick(params.row.id,params.row.proforma_id)}>
+              <DeleteIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        </Stack>
+      ),
+    },
+  ];
+  return (
+    <div>
+        <Box mb={4}>
+      <Meta title={`${company.company_name} MagicSheet`} />
+      <Stack spacing={2}>
+        <Stack direction="row" justifyContent="space-between" alignItems="center">
+          <h2>{company.company_name} Master MagicSheet</h2>
+          <Tooltip title="Assign COCO">
+            <IconButton
+              onClick={() => {
+              setSelectedPids(proformas.map((p) => p.ID));
 
-{/* Hard coded for now , later i will apply a for loop with props */}
-                <Stack>
-            <Stack
-                spacing={2}
-                direction="row"
-                justifyContent="space-between"
-                alignItems="center"
+                setOpenAssignCoco(true);
+              }}
             >
-                <h2>X Role MagicSheet</h2>
-                <Tooltip title="AssignCoco Students">
-                    <IconButton onClick={handleOpenAssignCoco}>
-                        <AddIcon />
-                    </IconButton>
-                </Tooltip>
-            </Stack>
-               <DataGrid rows={Rolerows} columns={columns} loading={loading} />
-               </Stack>
-            <Modal open={openAssignCoco} onClose={handleCloseAssignCoco}>
-                <AssignCoco handleClose={handleCloseAssignCoco} />
-            </Modal>
-       </div>
+              <AddIcon />
+            </IconButton>
+          </Tooltip>
+        </Stack>
 
-    )
+        <DataGrid
+          rows={masterRows}
+          columns={columns}
+          getRowId={(row) => row.id}
+          loading={loading}
+          
+        /></Stack>
+      </Box>
+        <Box mb={4}>
+{proformas.map(({ ID: pid, role }) => (
+  <Stack key={pid} mt={4} spacing={2}>
+    <Stack direction="row" justifyContent="space-between" alignItems="center">
+      <h3>{role} MagicSheet</h3>
+      <Stack direction="row" spacing={1}>
+        <Tooltip title="Add Students">
+          <IconButton onClick={() => handleOpenAddStudent(pid)}>
+            <AddIcon />
+          </IconButton>
+        </Tooltip>
+        <Tooltip title="Assign COCO">
+          <IconButton
+            onClick={() => {
+              setSelectedPids([pid]);
+              setOpenAssignCoco(true);
+            }}
+          >
+            <AddIcon />
+          </IconButton>
+        </Tooltip>
+      </Stack>
+    </Stack>
+    <DataGrid
+      rows={roleRows[pid] || []}
+      columns={columns}
+      getRowId={(row) => row.id}
+      loading={loading}
+    />
+  </Stack>
+))}
+</Box>
 
 
+      <Modal open={openAssignCoco} onClose={() => setOpenAssignCoco(false)}>
+        <AssignCoco
+          handleClose={() => setOpenAssignCoco(false)}
+          pids={selectedPids}
+          rid={company.recruitment_cycle_id.toString()}
+                   onAssignSuccess={() => {
+            fetchMagicSheets(selectedPids);
+            setSelectedPids([]);
+    setOpenAssignCoco(false);
+  }}
+
+        />
+      </Modal>
+
+      <Modal open={openAddStudent} onClose={() => setOpenAddStudent(false)}>
+        <AddStudent
+          handleClose={() => setOpenAddStudent(false)}
+          handleSubmitStudent={handleSubmitStudent}
+        />
+      </Modal>
+
+      <Dialog open={deleteDialogOpen} onClose={handleCancelDelete}>
+        <DialogTitle>Confirm Deletion</DialogTitle>
+        <DialogContent>
+          Are you sure you want to delete this entry?
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCancelDelete}>Cancel</Button>
+          <Button onClick={handleConfirmDelete} color="error">
+            Delete
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </div>
+  );
 }
+
 export default CompanyMagicSheet;
+ 

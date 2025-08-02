@@ -95,7 +95,7 @@ function Index({
   }));
   const { role } = useStore() || 0;
   return (
-    <div style={{ height: 500, width: "100%" }}>
+<div style={{ width: "100%" }}>
       <DataGrid
         rows={rows}
         columns={cols}

@@ -1,10 +1,9 @@
 import React from "react";
 import { Box, Button, Stack, TextField } from "@mui/material";
 import { useForm } from "react-hook-form";
-import { useRouter } from "next/router";
-
-// import postEmails, { Emails } from "@callbacks/admin/rc/student/AssignCocoStudents";
 import useStore from "@store/store";
+import MagicSheetRequest from "@callbacks/admin/magicsheet/magicsheetAdmin";
+import { useRouter } from "next/router"; 
 
 const boxStyle = {
   position: "absolute" as const,
@@ -21,53 +20,47 @@ const boxStyle = {
 };
 
 interface AssignCocoForm {
-  email: string;
+  emailId: string;
 }
 
-function AssignCoco({ handleClose }: { handleClose: () => void }) {
+interface AssignCocoProps {
+  handleClose: () => void;
+  rid: string;
+  pids: number[];
+  onAssignSuccess?: () => void; 
+}
+
+function AssignCoco({ handleClose, rid, pids, onAssignSuccess }: AssignCocoProps) {
   const {
     register,
     handleSubmit,
     formState: { errors },
     reset,
   } = useForm<AssignCocoForm>();
-  const router = useRouter();
-  const { rcid } = router.query;
-  const rid = (rcid || "").toString();
 
   const { token } = useStore();
-  const onSubmit = async (data: AssignCocoForm) => {
-    // const tosend: Emails = {
-    //   email: [
-    //     ...data.email
-    //       .replace(/,\s+/g, ",")
-    //       .split(/[\n,\s+]/)
-    //       .map((x) => x.trim()),
-    //   ],
-    };
+  const router = useRouter(); 
 
-//     const response = await postEmails.post(token, rid, tosend);
-//     if (response) {
-//       reset({
-//         email: "",
-//       });
-//     }
-//     handleClose();
-//   };
+  const onSubmit = async (data: AssignCocoForm) => {
+    const eid = data.emailId.trim();
+    const res = await MagicSheetRequest.assigncoco(token, Number(rid), eid, pids);
+    if (res) {
+      reset();
+      handleClose();
+      onAssignSuccess?.();
+    }
+  };
 
   return (
     <Box sx={boxStyle}>
       <Stack spacing={3}>
-        <h2>AssignCoco </h2>
+        <h2>Assign Coco</h2>
         <TextField
-          multiline
-          error={errors.email !== undefined}
-          label="Enter Email Ids"
-          id="emails"
+          label="Email"
           variant="standard"
-          {...register("email", {
-            required: true,
-          })}
+          error={!!errors.emailId}
+          helperText={errors.emailId?.message}
+          {...register("emailId", { required: "Email is required" })}
         />
         <Stack direction="row" spacing={2}>
           <Button
@@ -75,16 +68,12 @@ function AssignCoco({ handleClose }: { handleClose: () => void }) {
             sx={{ width: "100%" }}
             onClick={handleSubmit(onSubmit)}
           >
-            AssignCoco
+            Assign
           </Button>
           <Button
-            variant="contained"
+            variant="outlined"
             sx={{ width: "100%" }}
-            onClick={() => {
-              reset({
-                email: "",
-              });
-            }}
+            onClick={() => reset()}
           >
             Reset
           </Button>
