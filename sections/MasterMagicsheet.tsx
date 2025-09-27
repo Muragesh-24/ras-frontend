@@ -147,7 +147,7 @@ const handleConfirmDelete = async () => {
         </Tooltip> */}
       </Stack>
 
-    <DataGrid rows={rows} columns={columns} getRowId={(row) => row.id} loading={isLoading} />
+    <DataGrid rows={rows} columns={columns} getRowId={(row) => row.ID} loading={isLoading} />
 
 
       <Modal open={openEnroll} onClose={handleCloseEnroll}>

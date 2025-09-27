@@ -216,7 +216,7 @@ await fetchMagicSheets(proformas.map((p) => p.ID));
         <DataGrid
           rows={masterRows}
           columns={columns}
-          getRowId={(row) => row.id}
+          getRowId={(row) => row.ID}
           loading={loading}
           
         /></Stack>
