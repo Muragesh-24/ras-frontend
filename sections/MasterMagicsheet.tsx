@@ -39,7 +39,9 @@ const rcid = typeof rcidParam === "string" ? parseInt(rcidParam, 10) : undefined
 const [rows, setRows] = useState(data);
 
 useEffect(() => {
-  setRows(data);
+  if(data && data.length > 0) {
+    setRows(data);
+  }
 }, [data]);
 
 
@@ -147,7 +149,7 @@ const handleConfirmDelete = async () => {
         </Tooltip> */}
       </Stack>
 
-    <DataGrid rows={rows} columns={columns} getRowId={(row) => row.ID} loading={isLoading} />
+    <DataGrid rows={rows} columns={columns} getRowId={(row) => row.id} loading={isLoading} />
 
 
       <Modal open={openEnroll} onClose={handleCloseEnroll}>
